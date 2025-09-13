@@ -12,9 +12,11 @@ const AllIssues = () => {
       setLoading(true);
       const response = await getAllIssuesFull();
       if (response.success) {
+        console.log('[AllIssues] fetched issues length:', response.data.length, 'sample first item:', response.data[0]);
         setIssues(response.data);
         setError(null);
       } else {
+        console.warn('[AllIssues] fetch error:', response.error);
         setError(response.error || 'Failed to fetch issues.');
       }
       setLoading(false);

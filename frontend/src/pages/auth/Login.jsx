@@ -93,27 +93,31 @@ const Login = () => {
                 <form onSubmit={handleSubmit} className="auth-form">
                     <div className="form-group">
                         <label htmlFor="email">Email</label>
-                        <input
-                            type="email"
-                            id="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="Enter your email"
-                            disabled={isSubmitting}
-                            required
-                        />
+                            <input
+                                type="email"
+                                className="form-control"
+                                id="email"
+                                autoComplete="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="Enter your email"
+                                disabled={isSubmitting}
+                                required
+                            />
                     </div>
                     <div className="form-group">
                         <label htmlFor="password">Password</label>
-                        <input
-                            type="password"
-                            id="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter your password"
-                            disabled={isSubmitting}
-                            required
-                        />
+                            <input
+                                type="password"
+                                className="form-control"
+                                id="password"
+                                autoComplete="current-password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                                disabled={isSubmitting}
+                                required
+                            />
                     </div>
                     <button
                         type="submit"

@@ -1,4 +1,5 @@
 import { createContext, useState, useEffect, useContext } from 'react';
+import { useToast } from './ToastContext';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
@@ -20,6 +21,13 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const navigate = useNavigate();
+    let toast;
+    try {
+        toast = useToast();
+    } catch {
+        // Fallback no-op toast object if provider not yet mounted
+        toast = { push: () => {} };
+    }
 
     // Check for existing token on app load
     useEffect(() => {
@@ -39,6 +47,10 @@ export const AuthProvider = ({ children }) => {
                     throw new Error('Invalid token');
                 })
                 .then(user => {
+                    if (user && typeof user.role === 'string') {
+                        const r = user.role.toLowerCase();
+                        if (r === 'governement') user.role = 'government';
+                    }
                     setCurrentUser(user);
                 })
                 .catch(() => {
@@ -71,11 +83,17 @@ export const AuthProvider = ({ children }) => {
 
             if (response.ok) {
                 localStorage.setItem('token', data.token);
+                if (data.user && typeof data.user.role === 'string') {
+                    const r = data.user.role.toLowerCase();
+                    if (r === 'governement') data.user.role = 'government';
+                }
                 setCurrentUser(data.user);
+                toast.push(`Logged in as ${data.user.role}`, { type: 'success' });
                 return data.user;
             } else {
                 console.error('Login error response:', data);
                 setError(data.message || 'Login failed');
+                toast.push(data.message || 'Login failed', { type: 'error' });
                 return null;
             }
         } catch (err) {
@@ -103,10 +121,16 @@ export const AuthProvider = ({ children }) => {
 
             if (response.ok) {
                 localStorage.setItem('token', data.token);
+                if (data.user && typeof data.user.role === 'string') {
+                    const r = data.user.role.toLowerCase();
+                    if (r === 'governement') data.user.role = 'government';
+                }
                 setCurrentUser(data.user);
+                toast.push(`Registered & logged in as ${data.user.role}`, { type: 'success' });
                 return data.user;
             } else {
                 setError(data.message || 'Registration failed');
+                toast.push(data.message || 'Registration failed', { type: 'error' });
                 return null;
             }
         } catch (err) {
@@ -128,6 +152,9 @@ export const AuthProvider = ({ children }) => {
         user: currentUser, // Add this alias for ProtectedRoute
         isAuthenticated: !!currentUser, // Add this computed value
         loading, // Add this state value
+        // Derived role convenience flags (used by Sidebar etc.)
+    isGovernment: currentUser?.role === 'government' || currentUser?.role === 'governement',
+    isCitizen: currentUser?.role === 'citizen',
         login,
         register,
         logout,

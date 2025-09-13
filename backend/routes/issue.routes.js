@@ -64,6 +64,19 @@ router.get('/government/overview', authenticate, authorizeGovernment, issueContr
 // Government full list (unpaginated)
 router.get('/all', authenticate, authorizeGovernment, issueController.getAllIssuesFull);
 
+// Temporary debug route (remove in production): returns raw issue docs
+router.get('/debug/raw', authenticate, authorizeGovernment, async (req, res) => {
+    try {
+        const Issue = require('../models/Issue');
+        const issues = await Issue.find({}).sort({ createdAt: -1 }).lean();
+        console.log('[DEBUG /issues/debug/raw] count:', issues.length);
+        res.json({ success: true, count: issues.length, data: issues });
+    } catch (e) {
+        console.error('[DEBUG /issues/debug/raw] error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // Get issue statistics
 router.get('/statistics', authenticate, issueController.getIssueStatistics);
 

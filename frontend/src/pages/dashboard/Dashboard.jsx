@@ -21,6 +21,31 @@ const Dashboard = () => {
     });
     const [recentIssues, setRecentIssues] = useState([]);
     const [notifications, setNotifications] = useState([]);
+    const manualFetchAll = async () => {
+        try {
+            console.log('[Dashboard manualFetchAll] Invoked. user role:', user?.role);
+            const resp = await getAllIssuesFull();
+            console.log('[Dashboard manualFetchAll] Response:', resp);
+            if (resp.success) {
+                const issues = resp.data || [];
+                console.log('[Dashboard manualFetchAll] Issues length:', issues.length);
+                const counts = issues.reduce((acc, it) => {
+                    acc.total += 1;
+                    const st = (it.status || '').toLowerCase();
+                    if (st === 'resolved') acc.resolved += 1; else if (st.includes('progress')) acc.inProgress += 1; else acc.pending += 1;
+                    return acc;
+                }, { total: 0, pending: 0, resolved: 0, inProgress: 0 });
+                setStats({
+                    totalIssues: counts.total,
+                    pendingIssues: counts.pending,
+                    resolvedIssues: counts.resolved,
+                    inProgressIssues: counts.inProgress
+                });
+            }
+        } catch (e) {
+            console.warn('[Dashboard manualFetchAll] Error:', e);
+        }
+    };
 
     const formatDate = (d) => {
         try {
@@ -64,7 +89,11 @@ const Dashboard = () => {
             setIsLoading(true);
             setError('');
             try {
-                if (user?.role === 'government') {
+                const role = (user?.role || '').toLowerCase();
+                if (role === 'governement') {
+                    console.warn('[Dashboard] Detected misspelled role "governement". Treating as government.');
+                }
+                if (role === 'government' || role === 'governement') {
                     console.log('[Dashboard] Government user detected. Fetching all issues...');
                     const [fullResp, notifResp] = await Promise.all([
                         getAllIssuesFull(),
@@ -144,6 +173,11 @@ const Dashboard = () => {
             <div className="dashboard-header">
                 <h1>Welcome, {user?.name || 'User'}</h1>
                 <p>Here's an overview of your civic engagement activities</p>
+                {user?.role === 'government' && (
+                    <button onClick={manualFetchAll} className="btn btn-outline btn-sm" style={{marginLeft:'1rem'}}>
+                        Debug Fetch All Issues
+                    </button>
+                )}
             </div>
 
             {isLoading ? (

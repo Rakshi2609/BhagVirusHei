@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import Header from './components/layout/Header';
@@ -46,7 +47,8 @@ const App = () => {
   return (
     <Router>
       <ThemeProvider>
-        <AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Home />} />
@@ -163,7 +165,8 @@ const App = () => {
             <Route path="/404" element={<NotFound />} />
             <Route path="*" element={<Navigate to="/404" replace />} />
           </Routes>
-        </AuthProvider>
+          </AuthProvider>
+        </ToastProvider>
       </ThemeProvider>
     </Router>
   );

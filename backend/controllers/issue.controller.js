@@ -166,11 +166,13 @@ class IssueController {
             if (!req.user || req.user.role !== 'government') {
                 return res.status(403).json({ success: false, error: 'Forbidden' });
             }
-
+            console.log('[getAllIssuesFull] user:', req.user.id, 'role:', req.user.role, 'time:', new Date().toISOString());
             const issues = await Issue.find({})
                 .sort({ createdAt: -1 })
                 .populate('reportedBy', 'name email role')
                 .lean();
+
+            console.log('[getAllIssuesFull] total issues found:', issues.length);
 
             const data = issues.map(doc => ({
                 id: doc._id,

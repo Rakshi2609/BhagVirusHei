@@ -106,13 +106,18 @@ export const getGovernmentOverview = async () => {
 // Government: fetch ALL issues (unpaginated)
 export const getAllIssuesFull = async () => {
     try {
+        console.log('[issues.service] getAllIssuesFull: START request -> GET /issues/all');
         const response = await axios.get('/issues/all');
+        console.log('[issues.service] getAllIssuesFull: response status', response.status);
         const responseData = response.data;
         if (responseData.success && Array.isArray(responseData.data)) {
+            console.log('[issues.service] getAllIssuesFull: success data length', responseData.data.length);
             return { success: true, data: responseData.data };
         }
+        console.log('[issues.service] getAllIssuesFull: unexpected payload shape', responseData);
         return { success: true, data: [] };
     } catch (error) {
+        console.warn('[issues.service] getAllIssuesFull: ERROR', error?.response?.status, error?.message);
         return handleApiError(error);
     }
 };
@@ -127,9 +132,11 @@ export const getPendingIssues = async () => {
     }
 
     try {
+        console.log('[issues.service] getPendingIssues: START request -> GET /issues?status=pending');
         const response = await axios.get('/issues', {
             params: { status: 'pending' }
         });
+        console.log('[issues.service] getPendingIssues: response status', response.status);
         const responseData = response.data;
         if (responseData.success && responseData.data) {
             const payload = responseData.data.docs || responseData.data;
@@ -158,6 +165,7 @@ export const getPendingIssues = async () => {
         }
         return { success: true, data: [] };
     } catch (error) {
+        console.warn('[issues.service] getPendingIssues: ERROR', error?.response?.status, error?.message);
         return handleApiError(error);
     }
 };
@@ -202,7 +210,9 @@ export const getResolvedIssues = async () => {
     }
 
     try {
+    console.log('[issues.service] getResolvedIssues: START request -> GET /issues?status=resolved');
     const response = await axios.get('/issues', { params: { status: 'resolved' } });
+    console.log('[issues.service] getResolvedIssues: response status', response.status);
         // Handle paginated response structure
         const responseData = response.data;
         if (responseData.success && responseData.data) {
@@ -218,6 +228,7 @@ export const getResolvedIssues = async () => {
         }
         return { success: true, data: [] };
     } catch (error) {
+        console.warn('[issues.service] getResolvedIssues: ERROR', error?.response?.status, error?.message);
         return handleApiError(error);
     }
 };
