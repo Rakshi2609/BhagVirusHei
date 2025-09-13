@@ -20,6 +20,9 @@
   /* amber-500 */
   --color-info: #0ea5e9;
   /* sky-500 */
+  /* Pending specific (can differ from generic warning later) */
+  --color-pending: var(--color-warning);
+  --color-pending-bg: var(--color-warning-bg);
 
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #f8fafc;
@@ -91,6 +94,40 @@
   --z-index-modal: 1050;
   --z-index-popover: 1060;
   --z-index-tooltip: 1070;
+
+  /* Bridge legacy variable names (legacy styles still referencing these) */
+  --background-primary: var(--color-bg-primary);
+  --background-secondary: var(--color-bg-secondary);
+  --background-tertiary: var(--color-bg-tertiary);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+  --border-color: var(--color-border);
+
+  /* Semantic surfaces (elevation levels) */
+  --surface-1: var(--color-bg-primary);
+  --surface-2: var(--color-bg-secondary);
+  --surface-3: var(--color-bg-tertiary);
+
+  /* Feedback aliases */
+  --success-color: var(--color-success);
+  --warning-color: var(--color-warning);
+  --error-color: var(--color-danger);
+  --info-color: var(--color-info);
+  --success-bg: var(--color-success-bg);
+  --warning-bg: var(--color-warning-bg);
+  --error-bg: var(--color-danger-bg);
+  --info-bg: var(--color-info-bg);
+
+  /* Focus ring */
+  --focus-ring-color: rgba(var(--primary-rgb), 0.6);
+  --focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.35);
+
+  /* Accent (separate from primary to free primary for structural brand color) */
+  --color-accent: #6366f1; /* indigo-500 */
+  --color-accent-hover: #4f46e5; /* indigo-600 */
+  --color-accent-active: #4338ca; /* indigo-700 */
+  --color-accent-soft: rgba(99,102,241,0.15);
 }
 
 /* Dark Theme Colors */
@@ -99,27 +136,46 @@
   /* blue-400 */
   --color-primary-hover: #93c5fd;
   /* blue-300 */
-  --color-primary-light: #0b1220;
-  /* deep tint for hover backgrounds */
+  --color-primary-light: rgba(96,165,250,0.18); /* translucent accent for subtle hovers */
 
-  --color-bg-primary: #0b1220;
-  /* near-black blue */
-  --color-bg-secondary: #0f172a;
-  /* slate-900 */
-  --color-bg-tertiary: #111827;
-  /* gray-900 */
+  /* Refined dark surfaces (slightly lighter primary for contrast layering) */
+  --color-bg-primary: #0f1624; /* base */
+  --color-bg-secondary: #162132; /* elevated 1 */
+  --color-bg-tertiary: #1d293b; /* elevated 2 */
+  --color-text-primary: #f1f5f9; /* high contrast */
+  --color-text-secondary: #d1d9e3; /* improved contrast vs previous slate-300 */
+  --color-text-tertiary: #9caab7;
+  --color-border: #223044; /* slightly brighter border for clarity */
+  --color-border-light: #1a2533;
 
-  --color-text-primary: #e5e7eb;
-  /* gray-200 */
-  --color-text-secondary: #a1a1aa;
-  /* zinc-400 */
-  --color-text-tertiary: #6b7280;
-  /* gray-500 */
+  /* Success / warning / etc background adjustments for dark (reduce pure black tints, increase subtlety) */
+  --color-success-bg: rgba(34,197,94,0.12);
+  --color-danger-bg: rgba(239,68,68,0.12);
+  /* Softer, richer amber shift for dark mode (less muddy) */
+  --color-warning: #f6c452; /* custom warm amber */
+  --color-warning-bg: rgba(246,196,82,0.18);
+  --color-pending: var(--color-warning);
+  --color-pending-bg: var(--color-warning-bg);
+  --color-info-bg: rgba(14,165,233,0.14);
 
-  --color-border: #1f2937;
-  /* gray-800 */
-  --color-border-light: #111827;
-  /* gray-900 */
+  /* Bridge & semantic updates in dark */
+  --background-primary: var(--color-bg-primary);
+  --background-secondary: var(--color-bg-secondary);
+  --background-tertiary: var(--color-bg-tertiary);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+  --border-color: var(--color-border);
+  --surface-1: var(--color-bg-primary);
+  --surface-2: var(--color-bg-secondary);
+  --surface-3: var(--color-bg-tertiary);
+
+  /* Updated focus ring for dark for better visibility */
+  --focus-ring: 0 0 0 3px rgba(96,165,250,0.45);
+  --color-accent: #818cf8; /* lighter indigo for dark */
+  --color-accent-hover: #6366f1;
+  --color-accent-active: #4f46e5;
+  --color-accent-soft: rgba(129,140,248,0.18);
 
   --color-success-bg: #052e1b;
   --color-danger-bg: #3b0d0d;
@@ -130,6 +186,110 @@
   --shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Table & Search Styles */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--color-bg-primary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table thead th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table tbody tr {
+  border-top: var(--border-width) solid var(--color-border);
+  transition: var(--transition-base);
+}
+
+.table tbody tr:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.table td {
+  padding: 0.625rem 1rem;
+  vertical-align: top;
+  color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .table thead th {
+  background: #101a2b; /* slightly raise header for dark */
+}
+
+[data-theme="dark"] .table tbody tr:hover {
+  background: #142033;
+}
+
+/* Search Bar */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: var(--color-bg-primary);
+  border: var(--border-width) solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+}
+
+.search-bar input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.search-bar button {
+  background: var(--color-bg-tertiary);
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.search-bar button:hover {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.search-meta {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+}
+
+.no-results {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--color-text-secondary);
 }
 
 /* Base Reset */
@@ -315,14 +475,41 @@ a:hover {
 }
 
 .btn-primary {
-  color: white;
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
 
 .btn-primary:hover {
-  background-color: var(--color-primary-hover);
-  border-color: var(--color-primary-hover);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.btn-primary:active {
+  background: var(--color-accent-active);
+  border-color: var(--color-accent-active);
+}
+
+[data-theme="dark"] .btn-primary {
+  box-shadow: 0 2px 6px -1px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset;
+}
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Responsive cards (issues grid refinement) */
+.issues-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+@media (max-width: 680px) {
+  .issues-grid { grid-template-columns: 1fr; }
+  .issue-card-actions .btn { width: 100%; }
 }
 
 .btn-outline {
@@ -920,8 +1107,13 @@ textarea:focus {
 }
 
 .status-pending {
-  background-color: var(--color-warning-bg);
-  color: var(--color-warning);
+  background-color: var(--color-pending-bg);
+  color: var(--color-pending);
+}
+
+[data-theme="dark"] .status-pending {
+  border: 1px solid rgba(246,196,82,0.35);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.15) inset;
 }
 
 .category-tag {

@@ -89,8 +89,21 @@ const MyIssues = () => {
     };
 
     const handleTrackIssue = (issue) => {
-        setSelectedIssue(issue);
-        setIsTrackingModalOpen(true);
+        try {
+            console.log('[MyIssues] handleTrackIssue clicked issue raw:', issue);
+            if (!issue) {
+                console.warn('[MyIssues] handleTrackIssue received falsy issue');
+                return;
+            }
+            // Basic shape validation
+            if (!issue.id || !issue.title) {
+                console.warn('[MyIssues] issue missing critical fields', Object.keys(issue || {}));
+            }
+            setSelectedIssue(issue);
+            setIsTrackingModalOpen(true);
+        } catch (err) {
+            console.error('[MyIssues] handleTrackIssue error', err);
+        }
     };
 
     const closeTrackingModal = () => {
@@ -441,37 +454,37 @@ const MyIssues = () => {
                             <div className="issue-details-grid">
                                 <div className="detail-item">
                                     <label>Issue ID</label>
-                                    <span>#{selectedIssue.id}</span>
+                                    <span>#{selectedIssue.id || selectedIssue._id || 'N/A'}</span>
                                 </div>
                                 <div className="detail-item">
                                     <label>Status</label>
                                     <span className={`status-badge ${getStatusClass(selectedIssue.status)}`}>
-                                        {selectedIssue.status}
+                                        {selectedIssue.status || 'unknown'}
                                     </span>
                                 </div>
                                 <div className="detail-item">
                                     <label>Category</label>
-                                    <span>{selectedIssue.category}</span>
+                                    <span>{selectedIssue.category || '—'}</span>
                                 </div>
                                 <div className="detail-item">
                                     <label>Location</label>
-                                    <span>{selectedIssue.location}</span>
+                                    <span>{selectedIssue.location || selectedIssue.location?.address || '—'}</span>
                                 </div>
                                 <div className="detail-item">
                                     <label>Reported</label>
-                                    <span>{new Date(selectedIssue.date).toLocaleDateString()}</span>
+                                    <span>{selectedIssue.date ? new Date(selectedIssue.date).toLocaleDateString() : '—'}</span>
                                 </div>
                             </div>
 
                             <div className="issue-description">
                                 <h4>Description</h4>
-                                <p>{selectedIssue.description || selectedIssue.title}</p>
+                                <p>{selectedIssue.description || selectedIssue.title || 'No description provided.'}</p>
                             </div>
 
                             <div className="timeline-section">
                                 <h4>Progress Timeline</h4>
                                 <div className="timeline">
-                                    {selectedIssue.updates && selectedIssue.updates.length > 0 ? (
+                                    {Array.isArray(selectedIssue.updates) && selectedIssue.updates.length > 0 ? (
                                         selectedIssue.updates.map((update, index) => (
                                             <div key={index} className="timeline-item">
                                                 <div className={`timeline-marker ${update.type}`}></div>
@@ -481,7 +494,7 @@ const MyIssues = () => {
                                                         <div className="timeline-details">{update.details}</div>
                                                     )}
                                                     <div className="timeline-date">
-                                                        {formatDistanceToNow(new Date(update.date), { addSuffix: true })}
+                                                        {update.date ? formatDistanceToNow(new Date(update.date), { addSuffix: true }) : '—'}
                                                     </div>
                                                 </div>
                                             </div>

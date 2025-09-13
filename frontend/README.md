@@ -111,3 +111,39 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Contact
 
 For any questions or feedback, please contact us at support@civicpulse.gov.in
+
+## Theming System
+
+The application uses a CSS variables approach for light/dark themes. A `data-theme` attribute is applied to the root `<html>` element. Variables are defined in `src/index.css` under `:root` (light) and `[data-theme="dark"]` (dark). Use the semantic tokens (e.g. `--color-bg-primary`, `--color-text-secondary`, `--color-primary`) instead of hard-coded hex values when adding new components.
+
+`ThemeContext` (see `src/context/ThemeContext.jsx`) exposes:
+* `theme` – the resolved current theme (`light` or `dark`).
+* `rawPreference` – user preference (`light`, `dark`, or `system`).
+* `toggleTheme()` – flips between light and dark (overrides system).
+* `setTheme(pref)` – set explicit preference (`light` | `dark` | `system`).
+
+Example usage:
+```jsx
+import React, { useContext } from 'react';
+import ThemeContext from '../context/ThemeContext';
+
+const ThemeToggleButton = () => {
+   const { toggleTheme, theme } = useContext(ThemeContext);
+   return <button onClick={toggleTheme}>Theme: {theme}</button>;
+};
+```
+
+## Search Bar Component
+
+`SearchBar` (in `src/components/common/SearchBar.jsx`) provides debounced search input with a clear button. Props:
+* `onChange(term)` – invoked after debounce (default 300ms).
+* `placeholder` – custom placeholder text.
+* `delay` – debounce interval.
+* `value` / `defaultValue` – controlled / uncontrolled usage.
+
+Example usage:
+```jsx
+<SearchBar onChange={(term) => setFilter(term)} placeholder="Search issues" />
+```
+
+The All Issues dashboard page demonstrates filtering across multiple fields using `useMemo`.

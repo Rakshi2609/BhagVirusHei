@@ -652,18 +652,32 @@ export const getMyIssues = async () => {
         const responseData = response.data;
         if (responseData.success && responseData.data) {
             const payload = responseData.data.docs || responseData.data;
+            const mapStatus = (raw) => {
+                if (!raw) return 'pending';
+                // Normalize hyphenated backend statuses to UI friendly forms
+                const lowered = raw.toLowerCase();
+                if (lowered === 'in-progress') return 'In Progress';
+                if (lowered === 'in progress') return 'In Progress';
+                if (lowered === 'pending') return 'Pending';
+                if (lowered === 'resolved') return 'Resolved';
+                if (lowered === 'rejected') return 'Rejected';
+                if (lowered === 'assigned') return 'In Progress'; // treat assigned as in progress for citizen view
+                if (lowered === 'acknowledged') return 'In Progress';
+                if (lowered === 'closed') return 'Resolved';
+                return raw.charAt(0).toUpperCase() + raw.slice(1);
+            };
             const normalized = Array.isArray(payload)
                 ? payload.map(doc => ({
                     id: doc._id || doc.id,
                     title: doc.title,
                     description: doc.description,
                     category: doc.category,
-                    status: (doc.status || 'pending').replace('-', ' '),
+                    status: mapStatus(doc.status),
                     location: doc.location ? doc.location.address : '',
                     date: doc.createdAt,
                     updates: Array.isArray(doc.statusHistory) ? doc.statusHistory.map(h => ({
                         type: 'status_change',
-                        message: h.comment || `Status changed to ${h.status}`,
+                        message: h.comment || `Status changed to ${mapStatus(h.status)}`,
                         date: h.timestamp
                     })) : [],
                     votes: doc.votes || 0
