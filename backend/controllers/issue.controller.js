@@ -6,6 +6,10 @@ class IssueController {
     // Get all issues with comprehensive filtering and pagination
     async getAllIssues(req, res) {
         try {
+            // Failsafe: ensure only government role (route already guards but double-check)
+            if (!req.user || req.user.role !== 'government') {
+                return res.status(403).json({ success: false, error: 'Forbidden' });
+            }
             const {
                 status,
                 category,
@@ -80,10 +84,13 @@ class IssueController {
 
             res.json({
                 success: true,
-                data: issues,
-                totalCount: issues.totalDocs,
-                currentPage: issues.page,
-                totalPages: issues.totalPages
+                data: issues.docs,
+                pagination: {
+                    totalCount: issues.totalDocs,
+                    currentPage: issues.page,
+                    totalPages: issues.totalPages,
+                    limit: issues.limit
+                }
             });
         } catch (error) {
             console.error('Error fetching issues:', error);
@@ -92,6 +99,96 @@ class IssueController {
                 error: 'Failed to fetch issues',
                 message: error.message
             });
+        }
+    }
+
+    // Government overview: aggregate counts + recent issues
+    async getGovernmentOverview(req, res) {
+        try {
+            if (!req.user || req.user.role !== 'government') {
+                return res.status(403).json({ success: false, error: 'Forbidden' });
+            }
+
+            // Aggregate counts by status
+            const statusPipeline = [
+                { $group: { _id: '$status', count: { $sum: 1 } } }
+            ];
+            const statusResults = await Issue.aggregate(statusPipeline);
+            const counts = statusResults.reduce((acc, cur) => {
+                acc[cur._id] = cur.count;
+                return acc;
+            }, {});
+
+            const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+            // Recent issues (latest 10)
+            const recentIssues = await Issue.find({})
+                .sort({ createdAt: -1 })
+                .limit(10)
+                .populate('reportedBy', 'name role')
+                .lean();
+
+            const normalized = recentIssues.map(doc => ({
+                id: doc._id,
+                title: doc.title,
+                description: doc.description,
+                category: doc.category,
+                priority: doc.priority || 'low',
+                reporter: doc.reportedBy ? { name: doc.reportedBy.name, id: doc.reportedBy._id } : null,
+                location: doc.location ? { address: doc.location.address } : null,
+                date: doc.createdAt,
+                status: doc.status,
+                votes: doc.votes || 0,
+                updates: (doc.statusHistory || []).length
+            }));
+
+            res.json({
+                success: true,
+                data: {
+                    counts: {
+                        total: total,
+                        submitted: counts['pending'] || 0,
+                        resolved: counts['resolved'] || 0,
+                        'in-progress': counts['in-progress'] || 0
+                    },
+                    recent: normalized
+                }
+            });
+        } catch (error) {
+            console.error('Error building government overview:', error);
+            res.status(500).json({ success: false, error: 'Failed to build overview', message: error.message });
+        }
+    }
+
+    // Full list of all issues (no pagination) for government
+    async getAllIssuesFull(req, res) {
+        try {
+            if (!req.user || req.user.role !== 'government') {
+                return res.status(403).json({ success: false, error: 'Forbidden' });
+            }
+
+            const issues = await Issue.find({})
+                .sort({ createdAt: -1 })
+                .populate('reportedBy', 'name email role')
+                .lean();
+
+            const data = issues.map(doc => ({
+                id: doc._id,
+                title: doc.title,
+                description: doc.description,
+                category: doc.category,
+                priority: doc.priority,
+                status: doc.status,
+                reporter: doc.reportedBy ? { id: doc.reportedBy._id, name: doc.reportedBy.name } : null,
+                location: doc.location ? { address: doc.location.address } : null,
+                date: doc.createdAt,
+                votes: doc.votes || 0
+            }));
+
+            res.json({ success: true, data });
+        } catch (error) {
+            console.error('Error fetching full issue list:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch issues', message: error.message });
         }
     }
 

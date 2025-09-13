@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Prefer environment variable (e.g. VITE_API_URL) falling back to '/api'
+const API_BASE_URL = import.meta?.env?.VITE_API_URL || '/api';
 
 // Export the useAuth hook correctly
 export const useAuth = () => {
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }) => {
         const token = localStorage.getItem('token');
         if (token) {
             // Verify token with backend
+            // Use relative path so that when deployed behind a proxy it still works
             fetch(`${API_BASE_URL}/auth/me`, {
                 headers: {
                     'Authorization': `Bearer ${token}`

@@ -34,6 +34,89 @@ const handleApiError = (error) => {
     return { success: false, error: errorMessage };
 };
 
+// Get all issues (government dashboard / general listing)
+export const getAllIssues = async (queryParams = {}) => {
+    if (USE_MOCK) {
+        // Combine mock categories for a fuller dataset
+        const combined = [
+            ...mockData.pendingIssues,
+            ...mockData.inProgressIssues,
+            ...mockData.resolvedIssues
+        ];
+        return { success: true, data: combined };
+    }
+
+    try {
+    const response = await axios.get('/issues', { params: queryParams });
+        const responseData = response.data;
+        if (responseData.success && responseData.data) {
+            const payload = responseData.data.docs || responseData.data;
+            const normalized = Array.isArray(payload)
+                ? payload.map(doc => ({
+                    id: doc._id || doc.id,
+                    title: doc.title,
+                    description: doc.description,
+                    category: doc.category,
+                    priority: doc.priority || 'low',
+                    reporter: doc.reportedBy ? { name: doc.reportedBy.name, id: doc.reportedBy._id } : null,
+                    location: doc.location ? { address: doc.location.address } : null,
+                    date: doc.createdAt,
+                    status: doc.status,
+                    votes: doc.votes || 0
+                }))
+                : [];
+            return {
+                success: true,
+                data: normalized,
+                pagination: {
+                    totalCount: responseData.totalCount,
+                    currentPage: responseData.currentPage,
+                    totalPages: responseData.totalPages
+                }
+            };
+        }
+        return { success: true, data: [] };
+    } catch (error) {
+        return handleApiError(error);
+    }
+};
+
+// Government overview (counts + recent issues)
+export const getGovernmentOverview = async () => {
+    try {
+    const response = await axios.get('/issues/government/overview');
+        const responseData = response.data;
+        if (responseData.success && responseData.data) {
+            const counts = responseData.data.counts || {};
+            const recent = responseData.data.recent || [];
+            return {
+                success: true,
+                data: {
+                    counts,
+                    recent
+                }
+            };
+        }
+        return { success: false, error: 'Invalid overview payload' };
+    } catch (error) {
+        return handleApiError(error);
+    }
+};
+
+// Government: fetch ALL issues (unpaginated)
+export const getAllIssuesFull = async () => {
+    try {
+        const response = await axios.get('/issues/all');
+        const responseData = response.data;
+        if (responseData.success && Array.isArray(responseData.data)) {
+            return { success: true, data: responseData.data };
+        }
+        return { success: true, data: [] };
+    } catch (error) {
+        return handleApiError(error);
+    }
+};
+
 // Get all pending issues
 export const getPendingIssues = async () => {
     if (USE_MOCK) {
@@ -44,7 +127,7 @@ export const getPendingIssues = async () => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues`, {
+        const response = await axios.get('/issues', {
             params: { status: 'pending' }
         });
         const responseData = response.data;
@@ -89,7 +172,7 @@ export const getInProgressIssues = async () => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues?status=in-progress`);
+    const response = await axios.get('/issues', { params: { status: 'in-progress' } });
         // Handle paginated response structure
         const responseData = response.data;
         if (responseData.success && responseData.data) {
@@ -119,7 +202,7 @@ export const getResolvedIssues = async () => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues?status=resolved`);
+    const response = await axios.get('/issues', { params: { status: 'resolved' } });
         // Handle paginated response structure
         const responseData = response.data;
         if (responseData.success && responseData.data) {
@@ -156,7 +239,7 @@ export const getIssueById = async (issueId) => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues/${issueId}`);
+    const response = await axios.get(`/issues/${issueId}`);
         return { success: true, data: response.data };
     } catch (error) {
         return handleApiError(error);
@@ -204,7 +287,7 @@ export const assignIssue = async (issueId, assignmentData) => {
     }
 
     try {
-        const response = await axios.put(`${API_URL}/issues/${issueId}/assign`, assignmentData);
+    const response = await axios.put(`/issues/${issueId}/assign`, assignmentData);
         return { success: true, data: response.data };
     } catch (error) {
         return handleApiError(error);
@@ -252,7 +335,7 @@ export const updateIssueStatus = async (issueId, statusData) => {
     }
 
     try {
-        const response = await axios.put(`${API_URL}/issues/${issueId}/status`, statusData);
+    const response = await axios.put(`/issues/${issueId}/status`, statusData);
         return { success: true, data: response.data };
     } catch (error) {
         return handleApiError(error);
@@ -283,7 +366,7 @@ export const addResolutionProof = async (issueId, proofData) => {
         }
 
         const response = await axios.post(
-            `${API_URL}/issues/${issueId}/resolution`,
+            `/issues/${issueId}/resolution`,
             formData,
             {
                 headers: {
@@ -308,7 +391,7 @@ export const deleteIssue = async (issueId) => {
     }
 
     try {
-        await axios.delete(`${API_URL}/issues/${issueId}`);
+    await axios.delete(`/issues/${issueId}`);
         return { success: true, message: 'Issue deleted successfully' };
     } catch (error) {
         return handleApiError(error);
@@ -372,7 +455,7 @@ export const getIssueTrackingStatus = async (issueId) => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues/${issueId}/tracking`);
+    const response = await axios.get(`/issues/${issueId}/tracking`);
         return { success: true, data: response.data };
     } catch (error) {
         return handleApiError(error);
@@ -411,7 +494,7 @@ export const getUserIssues = async () => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues/user/me`);
+    const response = await axios.get('/issues/user/me');
         // Handle paginated response structure
         const responseData = response.data;
         if (responseData.success && responseData.data) {
@@ -554,7 +637,7 @@ export const getMyIssues = async () => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues/user/me`);
+    const response = await axios.get('/issues/user/me');
         const responseData = response.data;
         if (responseData.success && responseData.data) {
             const payload = responseData.data.docs || responseData.data;
@@ -646,7 +729,7 @@ export const getIssueTracking = async (issueId) => {
     }
 
     try {
-        const response = await axios.get(`${API_URL}/issues/${issueId}/tracking`);
+    const response = await axios.get(`/issues/${issueId}/tracking`);
         return { success: true, data: response.data };
     } catch (error) {
         return handleApiError(error);
@@ -666,5 +749,8 @@ export default {
     getIssueStatsByDepartment,
     getUserIssues,
     getMyIssues,
-    getIssueTracking
+    getIssueTracking,
+    getAllIssues,
+    getGovernmentOverview,
+    getAllIssuesFull
 };

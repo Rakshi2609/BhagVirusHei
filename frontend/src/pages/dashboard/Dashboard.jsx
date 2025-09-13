@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { IconLocation, IconUser, IconCalendar, IconMessage } from '../../components/common/Icons';
 import { IconChart, IconHourglass, IconCheckCircle } from '../../components/common/Icons';
 import api from '../../services/api';
-import { getMyIssues, getPendingIssues } from '../../services/issues';
+import { getMyIssues, getPendingIssues, getAllIssues, getGovernmentOverview, getAllIssuesFull } from '../../services/issues';
 import { listNotifications } from '../../services/notifications';
 import '../../styles/dashboard-home.css';
 
@@ -57,28 +57,42 @@ const Dashboard = () => {
 
     useEffect(() => {
         let mounted = true;
+        // Don't run until auth finished loading (user null vs undefined distinction not needed here, rely on presence or absence of user + isAuthenticated) 
+        // If user is still null but auth provider loading finished, we still attempt citizen path (will show empty state) 
         const load = async () => {
+            console.log('[Dashboard] effect start. user:', user);
             setIsLoading(true);
             setError('');
             try {
                 if (user?.role === 'government') {
-                    const [overallResp, pendingResp, notifResp] = await Promise.all([
-                        api.get('/analytics/overall'),
-                        getPendingIssues(),
+                    console.log('[Dashboard] Government user detected. Fetching all issues...');
+                    const [fullResp, notifResp] = await Promise.all([
+                        getAllIssuesFull(),
                         listNotifications({ limit: 5 })
                     ]);
 
                     if (!mounted) return;
+                    console.log('[Dashboard] getAllIssuesFull response:', fullResp);
 
-                    const counts = overallResp.data?.issueStats?.counts || {};
+                    const issues = fullResp.success ? (fullResp.data || []) : [];
+                    console.log('[Dashboard] issues length:', issues.length);
+                    const counts = issues.reduce((acc, it) => {
+                        acc.total += 1;
+                        const st = (it.status || '').toLowerCase();
+                        if (st === 'resolved') acc.resolved += 1; else if (st.includes('progress')) acc.inProgress += 1; else acc.pending += 1;
+                        return acc;
+                    }, { total: 0, pending: 0, resolved: 0, inProgress: 0 });
+
+                    console.log('[Dashboard] computed counts:', counts);
                     setStats({
-                        totalIssues: counts.total || 0,
-                        pendingIssues: counts.submitted || 0,
-                        resolvedIssues: counts.resolved || 0,
-                        inProgressIssues: counts['in-progress'] || 0
+                        totalIssues: counts.total,
+                        pendingIssues: counts.pending,
+                        resolvedIssues: counts.resolved,
+                        inProgressIssues: counts.inProgress
                     });
 
-                    setRecentIssues((pendingResp.success ? pendingResp.data : []).slice(0, 5));
+                    const sortedAll = [...issues].sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+                    setRecentIssues(sortedAll.slice(0, 5));
 
                     const notifs = notifResp.notifications || [];
                     setNotifications(notifs.slice(0, 5).map(n => ({
@@ -87,17 +101,18 @@ const Dashboard = () => {
                         date: formatDate(n.createdAt),
                         read: n.isRead
                     })));
-                } else {
+                } else if (user) { // citizen path
+                    console.log('[Dashboard] Citizen user detected. Fetching my issues...');
                     const [myResp, notifResp] = await Promise.all([
                         getMyIssues(),
                         listNotifications({ limit: 5 })
                     ]);
 
                     if (!mounted) return;
-
-                    const myIssues = myResp.success ? myResp.data : [];
+                    console.log('[Dashboard] getMyIssues response:', myResp);
+                    const myIssues = myResp.success ? (myResp.data || []) : [];
                     setStats(computeCitizenStats(myIssues));
-                    const sorted = [...myIssues].sort((a, b) => new Date(b.date) - new Date(a.date));
+                    const sorted = [...myIssues].sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
                     setRecentIssues(sorted.slice(0, 5));
 
                     const notifs = notifResp.notifications || [];
@@ -107,6 +122,8 @@ const Dashboard = () => {
                         date: formatDate(n.createdAt),
                         read: n.isRead
                     })));
+                } else {
+                    console.log('[Dashboard] No authenticated user yet. Skipping data fetch.');
                 }
             } catch (e) {
                 console.error('Dashboard load error:', e);
@@ -339,7 +356,10 @@ const Dashboard = () => {
 
                             {user?.role === 'government' && (
                                 <>
-                                    <Link to="/dashboard/pending-issues" className="btn btn-primary">
+                                    <Link to="/dashboard/all-issues" className="btn btn-primary">
+                                        View All Issues
+                                    </Link>
+                                    <Link to="/dashboard/pending-issues" className="btn btn-outline">
                                         View Pending Issues
                                     </Link>
                                     <Link to="/dashboard/analytics" className="btn btn-outline">

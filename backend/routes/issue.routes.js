@@ -55,8 +55,14 @@ const validateIssue = [
     body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']).withMessage('Invalid priority')
 ];
 
-// Get all issues with comprehensive filtering
-router.get('/', issueController.getAllIssues);
+// Get all issues (government only now)
+router.get('/', authenticate, authorizeGovernment, issueController.getAllIssues);
+
+// Government overview (counts + recent issues)
+router.get('/government/overview', authenticate, authorizeGovernment, issueController.getGovernmentOverview);
+
+// Government full list (unpaginated)
+router.get('/all', authenticate, authorizeGovernment, issueController.getAllIssuesFull);
 
 // Get issue statistics
 router.get('/statistics', authenticate, issueController.getIssueStatistics);

@@ -13,6 +13,7 @@ import CompleteProfile from './pages/auth/CompleteProfile';
 import Dashboard from './pages/dashboard/Dashboard';
 import PendingIssues from './pages/dashboard/PendingIssues';
 import ResolvedIssues from './pages/dashboard/ResolvedIssues';
+import AllIssues from './pages/dashboard/AllIssues';
 import Analytics from './pages/dashboard/Analytics';
 import Alerts from './pages/dashboard/Alerts';
 import ReportIssue from './pages/issues/ReportIssue';
@@ -117,6 +118,14 @@ const App = () => {
             />
 
             {/* Government Routes */}
+            <Route
+              path="/dashboard/all-issues"
+              element={
+                <GovernmentRoute>
+                  <AllIssues />
+                </GovernmentRoute>
+              }
+            />
             <Route
               path="/dashboard/pending-issues"
               element={
