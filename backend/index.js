@@ -8,6 +8,7 @@ const { connectDB } = require('./config/db');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const { ensureUploadDirs } = require('./utils/ensureUploadDirs');
 
 // Initialize Express app
 const app = express();
@@ -48,6 +49,9 @@ app.use(cors({
     },
     credentials: true
 }));
+// Ensure upload directories exist early (important for fresh deployments)
+ensureUploadDirs();
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -67,6 +71,7 @@ const issueRoutes = require('./routes/issue.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const alertRoutes = require('./routes/alert.routes');
+const uploadRoutes = require('./routes/upload.routes');
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -74,6 +79,7 @@ app.use('/api/issues', issueRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/alerts', alertRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Root route
 app.get('/', (req, res) => {

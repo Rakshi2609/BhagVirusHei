@@ -229,24 +229,108 @@ class IssueController {
                 priority = 'low'
             } = req.body;
 
-            // Handle file uploads
-            const images = req.files?.images ? req.files.images.map(file => file.filename) : [];
-            const voiceNote = req.files?.voiceNote ? req.files.voiceNote[0].filename : null;
+                // Handle file uploads OR already-uploaded Cloudinary URLs sent from frontend
+                let images = [];
+                if (req.files?.images) {
+                    console.log('[CTRL createIssue] Detected', req.files.images.length, 'image file(s) for server-side Cloudinary upload');
+                    const uploadPromises = req.files.images.map(async (file, idx) => {
+                        const label = file.originalname || `buffer-${idx}`;
+                        const start = Date.now();
+                        try {
+                            console.log(`[CTRL createIssue] [Upload->Cloudinary] START name=${label} size=${file.size}B type=${file.mimetype}`);
+                            const result = await uploadBuffer(file.buffer, 'issues', label, file.mimetype);
+                            const ms = Date.now() - start;
+                            console.log(`[CTRL createIssue] [Upload->Cloudinary] SUCCESS name=${label} url=${result.secure_url} bytes=${file.size} timeMs=${ms}`);
+                            return result.secure_url;
+                        } catch (e) {
+                            const ms = Date.now() - start;
+                            console.error(`[CTRL createIssue] [Upload->Cloudinary] FAIL name=${label} timeMs=${ms} err=${e.message}`);
+                            return null;
+                        }
+                    });
+                    const uploaded = await Promise.all(uploadPromises);
+                    images = uploaded.filter(Boolean);
+                    const failed = req.files.images.length - images.length;
+                    console.log('[CTRL createIssue] Cloudinary upload summary: success=', images.length, 'failed=', failed);
+                    if (images.length === 0) {
+                        console.warn('[CTRL createIssue] WARNING: All Cloudinary uploads failed. Check credentials and network.', {
+                            hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+                            hasApiKey: !!process.env.CLOUDINARY_API_KEY,
+                            hasApiSecret: !!process.env.CLOUDINARY_API_SECRET
+                        });
+                    }
+                } else if (req.body.images || req.body.imageUrls) {
+                    console.log('[CTRL createIssue] Using client-provided image URL path (no file buffers)');
+                    // Accept either a JSON string or an array
+                    const raw = req.body.images || req.body.imageUrls;
+                    try {
+                        if (typeof raw === 'string') {
+                            images = JSON.parse(raw);
+                        } else if (Array.isArray(raw)) {
+                            images = raw;
+                        }
+                    } catch (e) {
+                        console.log('[CTRL createIssue] Failed to parse incoming image URLs:', e.message);
+                    }
+                    if (!Array.isArray(images)) images = [];
+                    // Basic URL validation
+                    const beforeFilter = images.length;
+                    images = images.filter(u => typeof u === 'string' && /^https?:\/\//.test(u));
+                    console.log('[CTRL createIssue] Accepted', images.length, 'URL(s); filtered out', beforeFilter - images.length);
+                }
+                // Voice note: (optional) still on disk approach not supported now; future: upload to cloudinary with resource_type: 'video' or 'raw'
+                const voiceNote = null;
 
-            // Parse location data
+            // Parse & normalize location data (support multiple client formats)
             let locationData = null;
             try {
-                locationData = typeof location === 'string' ? JSON.parse(location) : location;
+                if (location) {
+                    if (typeof location === 'string') {
+                        // Could be JSON string OR plain address string
+                        if (location.trim().startsWith('{')) {
+                            locationData = JSON.parse(location);
+                        } else {
+                            // treat as plain address (no coordinates)
+                            locationData = { address: location.trim() };
+                        }
+                    } else if (typeof location === 'object') {
+                        locationData = location;
+                    }
+                }
             } catch (e) {
-                console.log('[CTRL createIssue] Location parse error. Raw value:', location);
+                console.log('[CTRL createIssue] Location parse error. Raw value:', location, 'err:', e.message);
                 return res.status(400).json({ success: false, message: 'Invalid location format' });
             }
+
+            // Accept alternate lat/lng fields (lat,lng) or (latitude,longitude) arriving separately in body
+            const rawLat = req.body.latitude || req.body.lat;
+            const rawLng = req.body.longitude || req.body.lng || req.body.long;
+            if (locationData && (!locationData.coordinates || !Array.isArray(locationData.coordinates))) {
+                if (rawLat && rawLng) {
+                    const latNum = parseFloat(rawLat);
+                    const lngNum = parseFloat(rawLng);
+                    if (!isNaN(latNum) && !isNaN(lngNum)) {
+                        locationData.coordinates = [lngNum, latNum]; // GeoJSON expects [lng, lat]
+                        console.log('[CTRL createIssue] Derived coordinates from separate fields');
+                    }
+                } else if (locationData.lat && locationData.lng) {
+                    const latNum = parseFloat(locationData.lat);
+                    const lngNum = parseFloat(locationData.lng);
+                    if (!isNaN(latNum) && !isNaN(lngNum)) {
+                        locationData.coordinates = [lngNum, latNum];
+                        console.log('[CTRL createIssue] Derived coordinates from locationData.lat/lng');
+                    }
+                }
+            }
+
             if (!locationData || !Array.isArray(locationData.coordinates) || locationData.coordinates.length !== 2) {
-                console.log('[CTRL createIssue] Missing or invalid coordinates in locationData:', locationData);
-                return res.status(400).json({ success: false, message: 'Location coordinates required' });
+                console.log('[CTRL createIssue] Missing or invalid coordinates in locationData (will reject). Provided:', locationData);
+                return res.status(400).json({ success: false, message: 'Location coordinates required (lng,lat)' });
             }
             if (!locationData.address) {
-                console.log('[CTRL createIssue] Missing address field in locationData:', locationData);
+                console.log('[CTRL createIssue] Missing address field in locationData. Provided object:', locationData);
+                // Not fatal yet, but supply placeholder address to satisfy schema
+                locationData.address = 'Address not specified';
             }
 
             // Calculate estimated resolution time based on category and priority (standalone helper to avoid lost `this` context)
@@ -264,7 +348,7 @@ class IssueController {
                     state: locationData.state,
                     pincode: locationData.pincode
                 },
-                images,
+                    images, // now array of Cloudinary URLs
                 voiceNote,
                 reportedBy: req.user.id,
                 priority,
@@ -286,8 +370,10 @@ class IssueController {
                 console.log('[CTRL createIssue] Issue saved with _id:', issue._id);
             } catch (saveErr) {
                 console.log('[CTRL createIssue] Mongoose save error:', saveErr.message);
-                if (saveErr.errors) {
-                    console.log('[CTRL createIssue] Validation detail keys:', Object.keys(saveErr.errors));
+                if (saveErr.name === 'ValidationError') {
+                    const fieldErrors = Object.keys(saveErr.errors).map(k => ({ field: k, message: saveErr.errors[k].message }));
+                    console.log('[CTRL createIssue] Validation errors detailed:', fieldErrors);
+                    return res.status(400).json({ success: false, message: 'Validation failed', errors: fieldErrors });
                 }
                 return res.status(500).json({ success: false, message: 'Database save failed', error: saveErr.message });
             }

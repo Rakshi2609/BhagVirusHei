@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCloudinaryUploads } from '../../services/cloudinary';
+import { useToast } from '../../context/ToastContext';
 import { DashboardLayout } from '../../components/layout';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../services/api';
@@ -295,6 +297,9 @@ const ReportIssue = () => {
         return Object.keys(newErrors).length === 0;
     };
 
+    const { uploadWithToast } = useCloudinaryUploads();
+    const toast = useToast();
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -305,13 +310,17 @@ const ReportIssue = () => {
         setIsSubmitting(true);
 
         try {
-            // Create FormData for file upload
-            const submitData = new FormData();
-
-            // Add basic form fields
-            submitData.append('title', formData.title);
-            submitData.append('description', formData.description);
-            submitData.append('category', formData.category);
+            // If we have a captured blob, upload it to Cloudinary first (direct)
+            let imageUrls = [];
+            if (capturedBlob) {
+                try {
+                    const file = new File([capturedBlob], 'capture.jpg', { type: capturedBlob.type || 'image/jpeg' });
+                    const url = await uploadWithToast(file);
+                    imageUrls.push(url);
+                } catch (upErr) {
+                    console.error('Cloudinary upload failed:', upErr);
+                }
+            }
 
             // Add location data as JSON string
             const hasCoords = formData.latitude && formData.longitude;
@@ -327,17 +336,18 @@ const ReportIssue = () => {
                 state: '', // You might want to extract this from address
                 pincode: '' // You might want to extract this from address
             };
-            submitData.append('location', JSON.stringify(locationData));
+            const payload = {
+                title: formData.title,
+                description: formData.description,
+                category: formData.category,
+                location: locationData,
+                images: imageUrls
+            };
 
-            // Add captured image
-            if (capturedBlob) {
-                submitData.append('images', capturedBlob, 'capture.jpg');
-            }
-
-            // Submit using shared API client (handles Authorization header)
-            const { data: result } = await api.post('/issues', submitData);
+            const { data: result } = await api.post('/issues', payload);
 
             if (result && result.success) {
+                toast.push('Issue reported successfully', { type: 'success' });
                 // Navigate to dashboard
                 navigate('/dashboard', {
                     state: {
@@ -351,6 +361,7 @@ const ReportIssue = () => {
         } catch (err) {
             console.error('Error submitting issue:', err);
             setErrors(prev => ({ ...prev, general: err?.response?.data?.message || err.message || 'Failed to submit issue' }));
+            toast.push('Failed to report issue', { type: 'error' });
         } finally {
             setIsSubmitting(false);
         }

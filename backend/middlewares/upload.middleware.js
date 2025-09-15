@@ -1,41 +1,6 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-// Create uploads directory if it doesn't exist
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // Create specific folders based on file type
-        let folder = 'misc';
-
-        if (file.mimetype.startsWith('image/')) {
-            folder = 'images';
-        } else if (file.mimetype.startsWith('audio/')) {
-            folder = 'audio';
-        } else if (file.mimetype.startsWith('application/')) {
-            folder = 'documents';
-        }
-
-        // Create the folder if it doesn't exist
-        const folderPath = path.join(uploadDir, folder);
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
-        }
-
-        cb(null, path.join(uploadDir, folder));
-    },
-    filename: function (req, file, cb) {
-        // Create a unique filename: timestamp-originalname
-        const uniqueFilename = `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
-        cb(null, uniqueFilename);
-    }
-});
+// Use memory storage so we can pipe buffers to Cloudinary without touching disk
+const storage = multer.memoryStorage();
 
 // File filter
 const fileFilter = (req, file, cb) => {
@@ -55,11 +20,9 @@ const fileFilter = (req, file, cb) => {
 
 // Create multer upload instance
 const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
-    }
+    storage,
+    fileFilter,
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // Export middleware for different upload scenarios
