@@ -1,6 +1,8 @@
 const Issue = require('../models/Issue');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
+const { computePriority } = require('../utils/priority');
+const { uploadBuffer } = require('../config/cloudinary');
 
 class IssueController {
     // Get all issues with comprehensive filtering and pagination
@@ -27,7 +29,7 @@ class IssueController {
             } = req.query;
 
             // Build filter object
-            const filter = {};
+            const filter = { mergedInto: { $exists: false } }; // only canonical
 
             if (status) filter.status = status;
             if (category) filter.category = category;
@@ -80,11 +82,43 @@ class IssueController {
                 ]
             };
 
+            console.log('[GOV getAllIssues] filter=', JSON.stringify(filter));
             const issues = await Issue.paginate(filter, options);
+            console.log('[GOV getAllIssues] fetched canonical count=', issues.docs.length, 'totalDocsRaw=', issues.totalDocs);
+            // Quick heuristic: find possible near duplicates not merged (same category, < 120m) for debugging
+            try {
+                const sample = issues.docs.slice(0, 50); // limit debug cost
+                for (let i = 0; i < sample.length; i++) {
+                    for (let j = i + 1; j < sample.length; j++) {
+                        const A = sample[i];
+                        const B = sample[j];
+                        if (A.category !== B.category) continue;
+                        const [lngA, latA] = A.location.coordinates;
+                        const [lngB, latB] = B.location.coordinates;
+                        const dLng = (lngA - lngB) * Math.PI / 180;
+                        const dLat = (latA - latB) * Math.PI / 180;
+                        const a = Math.sin(dLat/2)**2 + Math.cos(latA*Math.PI/180) * Math.cos(latB*Math.PI/180) * Math.sin(dLng/2)**2;
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        const dist = 6378137 * c;
+                        if (dist < 120) {
+                            console.log('[GOV getAllIssues][DEBUG] Close canonical pair not merged', A._id.toString(), B._id.toString(), 'dist(m)=', Math.round(dist));
+                        }
+                    }
+                }
+            } catch (dbgErr) {
+                console.log('[GOV getAllIssues][DEBUG] proximity scan failed', dbgErr.message);
+            }
+
+            // Enrich with reporters count and duplicates count
+            const enriched = issues.docs.map(doc => ({
+                ...doc.toObject(),
+                reportersCount: (doc.reporters || []).length,
+                duplicatesCount: (doc.duplicates || []).length
+            }));
 
             res.json({
                 success: true,
-                data: issues.docs,
+                data: enriched,
                 pagination: {
                     totalCount: issues.totalDocs,
                     currentPage: issues.page,
@@ -99,6 +133,62 @@ class IssueController {
                 error: 'Failed to fetch issues',
                 message: error.message
             });
+        }
+    }
+
+    // Retroactive deduplication: scans recent canonical issues and merges close duplicates (government only)
+    async retroactiveCluster(req, res) {
+        try {
+            if (!req.user || req.user.role !== 'government') {
+                return res.status(403).json({ success: false, error: 'Forbidden' });
+            }
+            const { lookbackHours = 720, radiusMeters = 100, category } = req.query;
+            const since = new Date(Date.now() - parseInt(lookbackHours) * 3600 * 1000);
+            const baseFilter = { createdAt: { $gte: since } };
+            if (category) baseFilter.category = category;
+            // Pull canonical only first
+            const canonicals = await Issue.find({ ...baseFilter, mergedInto: { $exists: false } })
+                .sort({ createdAt: 1 })
+                .limit(500) // safety cap
+                .exec();
+            let mergeOps = 0;
+            // Simple O(n^2) within cap using haversine
+            for (let i = 0; i < canonicals.length; i++) {
+                const A = canonicals[i];
+                if (A.mergedInto) continue; // may have been merged during loop
+                const [lngA, latA] = A.location.coordinates;
+                for (let j = i + 1; j < canonicals.length; j++) {
+                    const B = canonicals[j];
+                    if (B.mergedInto) continue;
+                    if (A.category !== B.category) continue;
+                    const [lngB, latB] = B.location.coordinates;
+                    const dLat = (latA - latB) * Math.PI / 180;
+                    const dLng = (lngA - lngB) * Math.PI / 180;
+                    const a = Math.sin(dLat/2)**2 + Math.cos(latA*Math.PI/180) * Math.cos(latB*Math.PI/180) * Math.sin(dLng/2)**2;
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    const dist = 6378137 * c;
+                    if (dist <= radiusMeters) {
+                        // Merge newer (B) into older (A)
+                        const canonical = A.createdAt <= B.createdAt ? A : B;
+                        const duplicate = canonical === A ? B : A;
+                        canonical.duplicates = canonical.duplicates || [];
+                        canonical.reporters = canonical.reporters || [];
+                        if (!canonical.reporters.some(r => r.toString() === duplicate.reportedBy.toString())) {
+                            canonical.reporters.push(duplicate.reportedBy);
+                        }
+                        canonical.duplicates.push(duplicate._id);
+                        duplicate.mergedInto = canonical._id;
+                        await duplicate.save();
+                        await canonical.save();
+                        mergeOps++;
+                        console.log('[retroactiveCluster] merged', duplicate._id.toString(), 'into', canonical._id.toString(), 'dist(m)=', Math.round(dist));
+                    }
+                }
+            }
+            return res.json({ success: true, mergedPairs: mergeOps });
+        } catch (e) {
+            console.error('[retroactiveCluster] error', e);
+            res.status(500).json({ success: false, error: e.message });
         }
     }
 
@@ -167,10 +257,12 @@ class IssueController {
                 return res.status(403).json({ success: false, error: 'Forbidden' });
             }
             console.log('[getAllIssuesFull] user:', req.user.id, 'role:', req.user.role, 'time:', new Date().toISOString());
-            const issues = await Issue.find({})
+            console.log('[GOV getAllIssuesFull] fetching canonical issues only');
+            const issues = await Issue.find({ mergedInto: { $exists: false } })
                 .sort({ createdAt: -1 })
                 .populate('reportedBy', 'name email role')
                 .lean();
+            console.log('[GOV getAllIssuesFull] result count=', issues.length);
 
             console.log('[getAllIssuesFull] total issues found:', issues.length);
 
@@ -184,7 +276,9 @@ class IssueController {
                 reporter: doc.reportedBy ? { id: doc.reportedBy._id, name: doc.reportedBy.name } : null,
                 location: doc.location ? { address: doc.location.address } : null,
                 date: doc.createdAt,
-                votes: doc.votes || 0
+                votes: doc.votes || 0,
+                reportersCount: (doc.reporters || []).length,
+                duplicatesCount: (doc.duplicates || []).length
             }));
 
             res.json({ success: true, data });
@@ -336,7 +430,7 @@ class IssueController {
             // Calculate estimated resolution time based on category and priority (standalone helper to avoid lost `this` context)
             const estimatedTime = calculateEstimatedResolutionTime(category, priority);
 
-            const issue = new Issue({
+            let issue = new Issue({
                 title,
                 description,
                 category,
@@ -377,15 +471,125 @@ class IssueController {
                 }
                 return res.status(500).json({ success: false, message: 'Database save failed', error: saveErr.message });
             }
-            await issue.populate([
-                { path: 'reportedBy', select: 'name email phone' }
-            ]);
+            await issue.populate([{ path: 'reportedBy', select: 'name email phone' }]);
+
+            // Duplicate merge logic: find existing canonical issue in same category within 100m
+            try {
+                const [lng, lat] = issue.location.coordinates;
+                let nearbyCanonical = await Issue.findOne({
+                    _id: { $ne: issue._id },
+                    category: issue.category,
+                    mergedInto: { $exists: false },
+                    location: {
+                        $geoWithin: {
+                            $centerSphere: [[lng, lat], 100 / 6378137]
+                        }
+                    }
+                }).sort({ createdAt: 1 }).exec();
+
+                // Fallback 1: bounding box + manual haversine if geoWithin returns nothing (possible index issues)
+                if (!nearbyCanonical) {
+                    console.log('[CTRL createIssue] MERGE: geoWithin found none, running fallback bounding-box scan');
+                    const RADIUS_METERS = 100;
+                    const METERS_PER_DEG_LAT = 111_320; // approximate
+                    const deltaLat = RADIUS_METERS / METERS_PER_DEG_LAT;
+                    const metersPerDegLng = 111_320 * Math.cos(lat * Math.PI / 180);
+                    const deltaLng = RADIUS_METERS / metersPerDegLng;
+                    const minLat = lat - deltaLat;
+                    const maxLat = lat + deltaLat;
+                    const minLng = lng - deltaLng;
+                    const maxLng = lng + deltaLng;
+                    const candidates = await Issue.find({
+                        _id: { $ne: issue._id },
+                        category: issue.category,
+                        mergedInto: { $exists: false },
+                        'location.coordinates.0': { $gte: minLng, $lte: maxLng },
+                        'location.coordinates.1': { $gte: minLat, $lte: maxLat }
+                    }).sort({ createdAt: 1 }).limit(10).exec();
+                    for (const cand of candidates) {
+                        const [cLng, cLat] = cand.location.coordinates;
+                        const dLat = (lat - cLat) * Math.PI / 180;
+                        const dLng = (lng - cLng) * Math.PI / 180;
+                        const a = Math.sin(dLat/2)**2 + Math.cos(lat*Math.PI/180) * Math.cos(cLat*Math.PI/180) * Math.sin(dLng/2)**2;
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                        const dist = 6378137 * c;
+                        if (dist <= RADIUS_METERS) {
+                            nearbyCanonical = cand;
+                            console.log('[CTRL createIssue] MERGE: Fallback bounding-box+Haversine matched canonical', cand._id.toString(), 'distance(m)=', Math.round(dist));
+                            break;
+                        }
+                    }
+                    if (!nearbyCanonical) {
+                        console.log('[CTRL createIssue] MERGE: Fallback also found none');
+                    }
+                }
+
+                if (nearbyCanonical) {
+                    console.log('[CTRL createIssue] MERGE: Found canonical issue', nearbyCanonical._id.toString(), 'for new issue', issue._id.toString());
+                    // Update canonical reporters & duplicates
+                    const canonicalChanged = new Set((nearbyCanonical.reporters || []).map(r => r.toString()));
+                    if (!canonicalChanged.has(issue.reportedBy.toString())) {
+                        nearbyCanonical.reporters.push(issue.reportedBy);
+                    }
+                    nearbyCanonical.duplicates = nearbyCanonical.duplicates || [];
+                    nearbyCanonical.duplicates.push(issue._id);
+                    await nearbyCanonical.save();
+
+                    // Mark new issue as merged
+                    issue.mergedInto = nearbyCanonical._id;
+                    await issue.save();
+                    console.log('[CTRL createIssue] MERGE: New issue marked duplicate of', nearbyCanonical._id.toString());
+
+                    // Recompute priority on canonical after adding reporter (vote logic separate)
+                    try {
+                        const result = await computePriority(nearbyCanonical);
+                        nearbyCanonical.priority = result.priority;
+                        nearbyCanonical.priorityReasons = result.reasons;
+                        await nearbyCanonical.save();
+                        console.log('[CTRL createIssue] MERGE: Canonical priority recomputed', result);
+                    } catch (e) {
+                        console.log('[CTRL createIssue] MERGE: priority recompute failed', e.message);
+                    }
+
+                    // Emit socket event for merged issue and canonical update
+                    req.io?.emit('issueMerged', {
+                        canonicalId: nearbyCanonical._id,
+                        duplicateId: issue._id,
+                        reporters: nearbyCanonical.reporters
+                    });
+
+                    // Respond referencing canonical
+                    return res.status(201).json({
+                        success: true,
+                        message: 'Issue reported and merged with existing similar issue',
+                        data: {
+                            canonicalIssueId: nearbyCanonical._id,
+                            duplicateIssueId: issue._id
+                        }
+                    });
+                } else {
+                    console.log('[CTRL createIssue] MERGE: No nearby canonical issue found (issue remains canonical)');
+                }
+            } catch (mergeErr) {
+                console.log('[CTRL createIssue] MERGE: merge logic error', mergeErr.message);
+            }
 
             // Emit real-time notification
             req.io?.emit('newIssue', {
                 issue: issue,
                 message: `New issue reported: ${title}`
             });
+
+            // Compute automatic priority & reasons (post-save so _id exists for cluster query)
+            try {
+                const { priority: autoPriority, reasons } = await computePriority(issue);
+                issue.priority = autoPriority;
+                issue.priorityReasons = reasons;
+                await issue.save();
+                console.log('[CTRL createIssue] Auto priority computed:', autoPriority, 'reasons:', reasons);
+            } catch (e) {
+                console.error('[CTRL createIssue] Auto priority computation failed:', e.message);
+            }
 
             const responsePayload = {
                 success: true,
@@ -407,7 +611,7 @@ class IssueController {
     // Get single issue by ID
     async getIssueById(req, res) {
         try {
-            const issue = await Issue.findById(req.params.id)
+            let issue = await Issue.findById(req.params.id)
                 .populate('reportedBy', 'name email phone role')
                 .populate('assignedTo.official', 'name email department')
                 .populate('resolutionDetails.resolvedBy', 'name email')
@@ -420,17 +624,39 @@ class IssueController {
                 });
             }
 
+            let canonical = issue;
+            if (issue.mergedInto) {
+                console.log('[getIssueById] Requested duplicate issue', issue._id.toString(), 'redirecting to canonical', issue.mergedInto.toString());
+                canonical = await Issue.findById(issue.mergedInto)
+                    .populate('reportedBy', 'name email phone role')
+                    .populate('assignedTo.official', 'name email department')
+                    .populate('resolutionDetails.resolvedBy', 'name email')
+                    .populate('statusHistory.updatedBy', 'name email role')
+                    .populate('duplicates', 'title reportedBy createdAt')
+                    .populate('reporters', 'name email role');
+            } else {
+                canonical = await Issue.findById(issue._id)
+                    .populate('duplicates', 'title reportedBy createdAt')
+                    .populate('reporters', 'name email role');
+            }
+
             // Mark notifications as read if viewed by the issue reporter
-            if (req.user && req.user.id === issue.reportedBy._id.toString()) {
-                issue.notifications.forEach(notification => {
+            if (req.user && req.user.id === canonical.reportedBy._id.toString()) {
+                canonical.notifications.forEach(notification => {
                     notification.read = true;
                 });
-                await issue.save();
+                await canonical.save();
             }
 
             res.json({
                 success: true,
-                data: issue
+                data: {
+                    issue: canonical,
+                    isDuplicate: !!issue.mergedInto,
+                    originalRequestedId: issue._id,
+                    reportersCount: (canonical.reporters || []).length,
+                    duplicatesCount: (canonical.duplicates || []).length
+                }
             });
         } catch (error) {
             console.error('Error fetching issue:', error);
@@ -528,10 +754,7 @@ class IssueController {
 
             const issue = await Issue.findById(id);
             if (!issue) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Issue not found'
-                });
+                return res.status(404).json({ success: false, error: 'Issue not found' });
             }
 
             const oldStatus = issue.status;
@@ -544,7 +767,6 @@ class IssueController {
                 comment: comment || `Status changed from ${oldStatus} to ${status}`,
                 timestamp: new Date()
             });
-
             // Handle resolution
             if (status === 'resolved') {
                 const createdAt = new Date(issue.createdAt);
@@ -653,23 +875,53 @@ class IssueController {
             const hasVoted = issue.voters.includes(userId);
 
             if (hasVoted) {
-                // Remove vote
                 issue.voters = issue.voters.filter(id => id.toString() !== userId);
                 issue.votes = Math.max(0, issue.votes - 1);
+                console.log('[voteOnIssue] vote removed user=', userId, 'issue=', issue._id.toString(), 'votes now=', issue.votes);
             } else {
-                // Add vote
                 issue.voters.push(userId);
                 issue.votes += 1;
+                console.log('[voteOnIssue] vote added user=', userId, 'issue=', issue._id.toString(), 'votes now=', issue.votes);
             }
 
+            const oldPriority = issue.priority;
+            let newPriority = oldPriority;
+            let reasons = issue.priorityReasons || [];
+            if (issue.priorityAuto) {
+                try {
+                    console.log('[voteOnIssue] recompute start issue=', issue._id.toString(), 'oldPriority=', oldPriority, 'votes=', issue.votes);
+                    const result = await computePriority(issue);
+                    newPriority = result.priority;
+                    reasons = result.reasons;
+                    issue.priority = newPriority;
+                    issue.priorityReasons = reasons;
+                    console.log('[voteOnIssue] recompute done issue=', issue._id.toString(), 'newPriority=', newPriority, 'reasons=', reasons);
+                } catch (e) {
+                    console.error('[voteOnIssue] computePriority failed:', e.message);
+                }
+            }
+                console.log('[voteOnIssue] priorityAuto=false skip recompute issue=', issue._id.toString());
+
             await issue.save();
+
+            if (oldPriority !== newPriority) {
+                req.io?.emit('issuePriorityUpdated', {
+                    issueId: issue._id,
+                    oldPriority,
+                    newPriority,
+                    reasons
+                });
+                console.log('[voteOnIssue] emitted issuePriorityUpdated issue=', issue._id.toString(), 'old=', oldPriority, 'new=', newPriority, 'reasons=', reasons);
+            }
 
             res.json({
                 success: true,
                 message: hasVoted ? 'Vote removed' : 'Vote added',
                 data: {
                     votes: issue.votes,
-                    hasVoted: !hasVoted
+                    hasVoted: !hasVoted,
+                    priority: issue.priority,
+                    priorityReasons: issue.priorityReasons || []
                 }
             });
         } catch (error) {
@@ -734,7 +986,6 @@ class IssueController {
                         }
                     }
                 ]),
-
                 // Status breakdown
                 Issue.aggregate([
                     { $match: matchFilter },
@@ -745,7 +996,6 @@ class IssueController {
                         }
                     }
                 ]),
-
                 // Category breakdown
                 Issue.aggregate([
                     { $match: matchFilter },
@@ -758,7 +1008,6 @@ class IssueController {
                     },
                     { $sort: { count: -1 } }
                 ]),
-
                 // Priority breakdown
                 Issue.aggregate([
                     { $match: matchFilter },
@@ -769,7 +1018,6 @@ class IssueController {
                         }
                     }
                 ]),
-
                 // Department breakdown
                 Issue.aggregate([
                     { $match: matchFilter },
@@ -795,7 +1043,6 @@ class IssueController {
                         }
                     }
                 ]),
-
                 // Resolution time stats
                 Issue.aggregate([
                     {

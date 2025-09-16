@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const { body } = require('express-validator');
 const issueController = require('../controllers/issue.controller');
+const chatController = require('../controllers/chat.controller');
 const { authenticate, authorizeGovernment } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
@@ -63,6 +64,9 @@ router.get('/government/overview', authenticate, authorizeGovernment, issueContr
 
 // Government full list (unpaginated)
 router.get('/all', authenticate, authorizeGovernment, issueController.getAllIssuesFull);
+
+// Retroactive clustering (dedupe existing issues) - government only
+router.post('/cluster/retroactive', authenticate, authorizeGovernment, issueController.retroactiveCluster);
 
 // Temporary debug route (remove in production): returns raw issue docs
 router.get('/debug/raw', authenticate, authorizeGovernment, async (req, res) => {
@@ -138,5 +142,9 @@ router.put('/:id/status', authenticate, authorizeGovernment, [
 
 // Vote on issue
 router.post('/:id/vote', authenticate, issueController.voteOnIssue);
+
+// Chat routes
+router.get('/:id/chat', authenticate, chatController.getMessages);
+router.post('/:id/chat', authenticate, chatController.postMessage);
 
 module.exports = router;

@@ -84,6 +84,16 @@ const issueSchema = new mongoose.Schema({
         enum: ['low', 'medium', 'high', 'urgent'],
         default: 'low'
     },
+    // Tracks why an automatic priority was assigned (e.g., votes, clustering)
+    priorityReasons: [{
+        type: String
+    }],
+    // If true, system may automatically recompute priority. If an admin manually
+    // overrides priority you can set this to false to lock it.
+    priorityAuto: {
+        type: Boolean,
+        default: true
+    },
     statusHistory: [{
         status: {
             type: String,
@@ -140,7 +150,27 @@ const issueSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Create a geospatial index for location-based queries
+// Duplicate clustering support
+// mergedInto: if set, this issue is a duplicate and should not appear independently in government listings
+issueSchema.add({
+    mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'Issue', index: true },
+    duplicates: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Issue' }], // only populated on canonical root
+    reporters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // aggregated distinct reporters for canonical issue
+});
+
+// Ensure reporters includes original reporter on save (only for new docs)
+issueSchema.pre('save', function(next) {
+    if (this.isNew) {
+        if (!Array.isArray(this.reporters)) this.reporters = [];
+        if (this.reportedBy && !this.reporters.some(r => r.toString() === this.reportedBy.toString())) {
+            this.reporters.push(this.reportedBy);
+        }
+    }
+    next();
+});
+
+// Geospatial indexes (primary 2dsphere on full location subdocument + coordinates fallback)
+issueSchema.index({ location: '2dsphere' });
 issueSchema.index({ 'location.coordinates': '2dsphere' });
 
 // Add pagination plugin
