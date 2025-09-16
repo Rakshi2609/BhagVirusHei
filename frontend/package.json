@@ -4,14 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "node api.js && vite --host",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview --host"
   },
   "dependencies": {
-  "@fortawesome/free-solid-svg-icons": "^7.0.1",
-  "@fortawesome/react-fontawesome": "^0.2.2",
+    "@fortawesome/free-solid-svg-icons": "^7.0.1",
+    "@fortawesome/react-fontawesome": "^0.2.2",
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
     "date-fns": "^4.1.0",

@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "postinstall": "npm --prefix backend install && npm --prefix frontend install",
-    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
-    "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "node api.js && concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "node api.js && npm --prefix backend run dev",
+    "dev:frontend": "node api.js && npm --prefix frontend run dev",
     "build:frontend": "npm --prefix frontend run build"
   },
   "dependencies": {
